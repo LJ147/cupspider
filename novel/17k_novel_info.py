@@ -66,7 +66,7 @@ def scrape_one_page(page):
 
     for item in items:
         if item.a != None:
-            title = item.find('td',class_ = 'td6').text
+            title = str(item.find('td',class_ = 'td6').text)
             book_url = item.find('td',class_ = 'td4').a['href']
 
             # # 解析界面元素
@@ -120,7 +120,18 @@ def craw_all(page):
         craw_all(page)
 
 
+
+
+
 if __name__ == '__main__':
+    drop = "DROP TABLE IF EXISTS book_url_17k"
+    param = ()
+
+    db_tool.execute_sql(drop,param)
+
+    sql = "CREATE TABLE book_url_17k (url  VARCHAR (250) NOT NULL PRIMARY KEY,title  VARCHAR(250))"
+
+    db_tool.execute_sql(sql,param)
 
     start_time = datetime.datetime.now()
     # 初始page
@@ -134,7 +145,7 @@ if __name__ == '__main__':
         print 'current page :' + str(page)
 
         # 遇到错误时随机休眠一段时间（IP跳跃的简易替代）
-        rand = random.randint(3, 20)
+        rand = random.randint(3, 10)
         print 'sleep  ' + str(rand) + "seconds "
         time.sleep(rand)
 
