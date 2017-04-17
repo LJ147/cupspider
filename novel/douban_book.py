@@ -1,53 +1,20 @@
 #!/usr/bin/env python
 # -*- coding: utf-8 -*-
-# Created by LJ on 2017/4/14
-# 获取起点全部小说的基本信息(url 推荐票数等)，存入数据库
+# Created by LJ on 2017/4/16
+
+
 import random
 import sys
 import db_tool
 import web_tool
 import time
-from lxml import etree
+import re
 
 reload(sys)
 sys.setdefaultencoding("utf-8")
 import datetime
 
-
-# convert str to num    将count原始值（str） 199.7万字\n  转换为  （int）1997000
-def parse_str_number(count):
-    isBigNum = False
-
-    for str_in in count.decode('utf-8'):
-        # 单位为"万"
-        if u'\u4e00' <= str_in <= u'\u9fff':
-            count = count[:-1].encode('utf-8')
-            isBigNum = True
-
-            if count.find('.') == -1:
-                count = int(count) * 10000
-            else:
-                split_list = count.split(".", -1)
-                temp = len(split_list[1])
-                try:
-                    decimal = 1.0 * int(split_list[1]) / (10 ** temp)
-                    count = (int(split_list[0]) + decimal) * 10000
-                except ValueError:
-                    print split_list
-                    count = -1
-                    print "ValueError: str to int "
-    if isBigNum == False:
-        if count.find('.') == -1:
-            count = int(count)
-        else:
-            split_list = count.split('.', 1)
-            try:
-                count = int(split_list[0])
-            except ValueError:
-                print split_list
-                count = -1
-                print "Error: str to int "
-    return int(count)
+TOTAL_PAGE = 97
 
 
 # 爬取、解析并存储单一页面的小说信息（mysql）
@@ -56,26 +23,24 @@ def scrape_one_page(page):
     # url = 'http://a.qidian.com/?size=-1&sign=-1&tag=-1&chanId=-1&subCateId=-1&orderId=2&update=-1&page={page}&month=-1&style=1&action=-1&vip=-1'.format(
     #     page=page)
 
-    url = 'http://all.17k.com/lib/book/2_0_0_0_0_4_0_0_{page}.html'.format(page=page)
-    # html = etree.parse('hello.html')
-    # print type(html)
-    # result = html.xpath('//li')
-    # print result
-    # print len(result)
-    # print type(result)
-    # print type(result[0])
+    url = 'https://book.douban.com/tag/编程?start={page}&type=T'.format(page=(page - 1) * 20)
     soup = web_tool.getSoup(url)
-    items = soup.find_all('tr', class_='bg1')
-    items2 = soup.find_all('tr', class_='bg2')
-
-    # items = soup.find_all('div', class_='book-mid-info')
+    items = soup.find_all('li', class_="subject-item")
 
     print "current page : " + str(page)
 
     for item in items:
         if item.a != None:
-            title = str(item.find('td', class_='td6').text)
-            book_url = item.find('td', class_='td4').a['href']
+            book_url = item.find('div', class_='pic').a.get('href')
+            pic_url = item.find('div', class_='pic').img.get('src')
+
+            info = item.find('div', class_='info')
+            title = str(info.h2.a['title']) + str(info.h2.a.span.text)
+            pub = info.contents[3]
+            star = info.contents[5].contents[3]
+            person_count = info.contents[5].contents[5]
+
+            intro = info.contents[7].text
 
             # # 解析界面元素
             # title = item.a.text
@@ -92,9 +57,9 @@ def scrape_one_page(page):
             # type_one = types.split('·')[0]
             # type_two = types.split('·')[1]
             # status = details.split('|')[2].replace('\n', '')
-            insert = "insert into book_url_17k(url ,title) VALUES (%s,%s)"
+            insert = "insert into book_url_douban(book_url,pic_url,star,intro,title,person_count) VALUES (%s,%s,%s,%s,%s,%s)"
 
-            param = (book_url, title)
+            param = (book_url, pic_url, star, intro, title, person_count)
 
             # insert = "insert into bookForQidian(title,url,author,typeOne,typeTwo,numberOfWords,recommend,status) values(%s,%s,%s,%s,%s,%s,%s,%s)"
             # 分别为小说标题、url、作者、两种分类、总字数、总推荐票数、状态
@@ -117,14 +82,13 @@ def scrape_one_page(page):
 
 # 递归调用
 def craw_all(page):
-    TOTAL_PAGE = 18061
     try:
         while (page < TOTAL_PAGE):
             scrape_one_page(page)
             page = page + 1
     # 某一页面出现错误时，页码page加一，跳过该页继续爬取
     except:
-        page = page + 1
+        # page = page + 1
         craw_all(page)
 
 
@@ -133,16 +97,17 @@ if __name__ == '__main__':
     param = ()
 
     # db_tool.execute_sql(drop,param)
+    # param = (book_url, pic_url, star, intro, title, person_count)
 
-    # sql = "CREATE TABLE book_url_17k (url  VARCHAR (250) NOT NULL PRIMARY KEY,title  VARCHAR(250))"
+    sql = "CREATE TABLE book_url_douban (book_url  VARCHAR (250) NOT NULL PRIMARY KEY,title VARCHAR (250),person_count VARCHAR (250),pic_url  VARCHAR (250)  ,star VARCHAR (250),intro VARCHAR (250))"
 
-    # db_tool.execute_sql(sql, param)
+    db_tool.execute_sql(sql, param)
 
     start_time = datetime.datetime.now()
     # 初始page
     page = 1
     try:
-        while (page < 18061):
+        while (page < TOTAL_PAGE):
             scrape_one_page(page)
             page = page + 1
     except:
@@ -150,7 +115,7 @@ if __name__ == '__main__':
         print 'current page :' + str(page)
 
         # 遇到错误时随机休眠一段时间（IP跳跃的简易替代）
-        rand = random.randint(3, 10)
+        rand = random.randint(3, 5)
         print 'sleep  ' + str(rand) + "seconds "
         time.sleep(rand)
 
